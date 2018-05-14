@@ -42,15 +42,15 @@ int read_ftpclien_cmd(char* buff, command *cmdstruct);
 
 SOCKET pasv(SOCKET &connect_SOCKET, char* host);
 
-int ls(SOCKET &connect_SOCKET, char *_cmd);
+int ls(SOCKET &connect_SOCKET, char* host, char *_cmd);
 
 void pwd(SOCKET &connect_SOCKET, char *pwd);
 
 void TYPE_I(SOCKET &connect_SOCKET, char *typei);
 
-int put(SOCKET &connect_SOCKET, char *_cmd, command* cmdstruct);
+int put(SOCKET &connect_SOCKET, char* host, char *_cmd, command* cmdstruct);
 
-int get(SOCKET &connect_SOCKET, char *_cmd, command* cmdstruct);
+int get(SOCKET &connect_SOCKET, char* host, char *_cmd, command* cmdstruct);
 
 int feedback(SOCKET &connect_SOCKET, char* feedback, int size);
 

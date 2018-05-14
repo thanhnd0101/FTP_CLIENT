@@ -92,25 +92,17 @@ int main(int argc, char *argv[])
 		else
 		{
 			if ((strcmp(cmdstruct->_cmd, "NLST") == 0) || (strcmp(cmdstruct->_cmd, "LIST") == 0)){
-				if (pasv(connect_SOCKET, host) != -1){
-					ls(connect_SOCKET, whole_cmd);
-					closesocket(DataSocket);
-					continue;
-				}
+				ls(connect_SOCKET, host,whole_cmd);
+				continue;
 			}
 			else if (strcmp(cmdstruct->_cmd, "STOR") == 0){
-				if (pasv(connect_SOCKET, host) != -1){
-					put(connect_SOCKET, whole_cmd, cmdstruct);
-					closesocket(DataSocket);
-					continue;
-				}
+				put(connect_SOCKET, host,whole_cmd, cmdstruct);
+				continue;
+				
 			}
 			else if (strcmp(cmdstruct->_cmd, "RETR") == 0){
-				if (pasv(connect_SOCKET, host) != -1){
-					get(connect_SOCKET, whole_cmd, cmdstruct);
-					closesocket(DataSocket);
-					continue;
-				}
+				get(connect_SOCKET,host, whole_cmd, cmdstruct);
+				continue;
 			}
 		}
 	}
@@ -470,39 +462,42 @@ SOCKET pasv(SOCKET &connect_SOCKET, char* host){
 	return DataSocket;
 }
 
-int ls(SOCKET &connect_SOCKET,char *_cmd){
+int ls(SOCKET &connect_SOCKET,char* host,char *_cmd){
+	if (pasv(connect_SOCKET, host) != -1){
+		char retrive[BUFLEN * 2];
+		char f_ls_list[BUFLEN * 5];
 
-	char retrive[BUFLEN*2];
-	char f_ls_list[BUFLEN * 5];
+		//send NLST
+		int status = send(connect_SOCKET, _cmd, BUFLEN, 0);
 
-	//send NLST
-	int status = send(connect_SOCKET, _cmd, BUFLEN, 0);
+		if (status < 0){
+			printf("send() error %d\n", WSAGetLastError());
+			return -1;
+		}
+		//get feedback
+		char feedb[BUFLEN];
+		status = feedback(connect_SOCKET, feedb, BUFLEN);
+		if (status < 0){
+			return -1;
+		}
+		else{
+			fputs(feedb, stdout);
+		}
 
-	if ( status < 0){
-		printf("send() error %d\n", WSAGetLastError());
-		return -1;
-	}
-	//get feedback
-	char feedb[BUFLEN];
-	status=feedback(connect_SOCKET, feedb, BUFLEN);
-	if (status < 0){
-		return -1;
-	}
-	else{
-		fputs(feedb, stdout);
-	}
-
-	//get list
-	memset(retrive, '\0', BUFLEN);
-	memset(f_ls_list, '\0', sizeof(f_ls_list));
-	status = recv(DataSocket, retrive, sizeof(retrive), 0);
-	while (status > 0){
-		strcat(f_ls_list, retrive);
+		//get list
+		memset(retrive, '\0', BUFLEN);
+		memset(f_ls_list, '\0', sizeof(f_ls_list));
 		status = recv(DataSocket, retrive, sizeof(retrive), 0);
+		while (status > 0){
+			strcat(f_ls_list, retrive);
+			status = recv(DataSocket, retrive, sizeof(retrive), 0);
+		}
+		get226_Successfully_transferred(connect_SOCKET, feedb);
+		fputs(f_ls_list, stdout);
+
+		closesocket(DataSocket);
+		return 0;
 	}
-	get226_Successfully_transferred(connect_SOCKET, feedb);
-	fputs(f_ls_list, stdout);
-	return 0;
 }
 
 void pwd(SOCKET &connect_SOCKET,char *pwd){
@@ -547,90 +542,98 @@ void TYPE_I(SOCKET &connect_SOCKET, char *typei){
 	}
 }
 
-int put(SOCKET &connect_SOCKET, char *_cmd,command* cmdstruct){
-	
-	//Check whether file is valid?
+int put(SOCKET &connect_SOCKET, char* host,char *_cmd,command* cmdstruct){
+	if (pasv(connect_SOCKET, host) != -1){
+		//Check whether file is valid?
 
-	FILE* file_out = fopen(cmdstruct->_args, "r");
-	if (file_out == NULL){
-		printf("%s is invalid", cmdstruct->_args);
-		return -1;
-	}
-	//send STOR command
-	int status = send(connect_SOCKET, _cmd, BUFLEN, 0);
+		FILE* file_out = fopen(cmdstruct->_args, "r");
+		if (file_out == NULL){
+			printf("%s is invalid", cmdstruct->_args);
+			return -1;
+		}
+		//send STOR command
+		int status = send(connect_SOCKET, _cmd, BUFLEN, 0);
 
-	if (status < 0){
-		printf("send() error %d\n", WSAGetLastError());
-		return -1;
-	}
-	//get feedback
-	char feedb[BUFLEN];
-	status = feedback(connect_SOCKET, feedb, BUFLEN);
-
-	if (status < 0){
-		return -1;
-	}
-	else{
-		fputs(feedb, stdout);
-	}
-	//upload file
-	int len;
-	char buf[BUFLEN];
-	memset(buf, '\0', BUFLEN);
-	while ((len = fread(buf, 1, BUFLEN, file_out)) > 0){
-		status = send(DataSocket, buf, len, 0);
 		if (status < 0){
 			printf("send() error %d\n", WSAGetLastError());
 			return -1;
 		}
-	}
-	fclose(file_out);
-	return 0;
-}
+		//get feedback
+		char feedb[BUFLEN];
+		status = feedback(connect_SOCKET, feedb, BUFLEN);
 
-int get(SOCKET &connect_SOCKET, char *_cmd, command* cmdstruct){
-	//send RETR command
-	int status = send(connect_SOCKET, _cmd, BUFLEN, 0);
-
-	if (status < 0){
-		printf("send() error %d\n", WSAGetLastError());
-		return -1;
-	}
-	//get feedback
-	char feedb[BUFLEN];
-
-	status = feedback(connect_SOCKET, feedb, BUFLEN);
-
-	if (status < 0){
-		return -1;
-	}
-	else{
-		int code;
-		fputs(feedb, stdout);
-		sscanf(feedb, "%d", &code);
-		if (code == 550){
+		if (status < 0){
 			return -1;
 		}
+		else{
+			fputs(feedb, stdout);
+		}
+		//upload file
+		int len;
+		char buf[BUFLEN];
+		memset(buf, '\0', BUFLEN);
+		while ((len = fread(buf, 1, BUFLEN, file_out)) > 0){
+			status = send(DataSocket, buf, len, 0);
+			if (status < 0){
+				printf("send() error %d\n", WSAGetLastError());
+				return -1;
+			}
+		}
+		fclose(file_out);
+		
+		closesocket(DataSocket);
+		return 0;
 	}
+}
 
-	//create a new file
-	FILE* file_in = fopen(cmdstruct->_args, "w");
-	if (file_in == NULL){
-		printf("Can not get file %s", cmdstruct->_args);
-		return -1;
-	}
-	//download file
-	int len;
-	char buf[BUFLEN];
-	memset(buf, '\0', BUFLEN);
+int get(SOCKET &connect_SOCKET, char* host,char *_cmd, command* cmdstruct){
+	if (pasv(connect_SOCKET, host) != -1){
+		//send RETR command
+		int status = send(connect_SOCKET, _cmd, BUFLEN, 0);
 
-	while (len = recv(DataSocket, buf, BUFLEN, 0) > 0){
-		fwrite(buf, 1, BUFLEN, file_in);
+		if (status < 0){
+			printf("send() error %d\n", WSAGetLastError());
+			return -1;
+		}
+		//get feedback
+		char feedb[BUFLEN];
+
+		status = feedback(connect_SOCKET, feedb, BUFLEN);
+
+		if (status < 0){
+			return -1;
+		}
+		else{
+			int code;
+			fputs(feedb, stdout);
+			sscanf(feedb, "%d", &code);
+			if (code == 550){
+				return -1;
+			}
+		}
+
+		//create a new file
+		FILE* file_in = fopen(cmdstruct->_args, "w");
+		if (file_in == NULL){
+			printf("Can not get file %s", cmdstruct->_args);
+			return -1;
+		}
+		//download file
+		int len;
+		char buf[BUFLEN];
+		memset(buf, '\0', BUFLEN);
+
+		while (len = recv(DataSocket, buf, BUFLEN, 0) > 0){
+			fwrite(buf, 1, BUFLEN, file_in);
+		}
+
+		get226_Successfully_transferred(connect_SOCKET, feedb);
+		fclose(file_in);
+
+		closesocket(DataSocket);
+
+		return 0;
 	}
-	
-	get226_Successfully_transferred(connect_SOCKET, feedb);
-	fclose(file_in);
-	return 0;
 }
 
 int get226_Successfully_transferred(SOCKET &connect_SOCKET, char* pre_feedback){
@@ -659,4 +662,8 @@ int get226_Successfully_transferred(SOCKET &connect_SOCKET, char* pre_feedback){
 		status = feedback(connect_SOCKET, feedb, BUFLEN);
 	}
 	return -1;
+}
+
+int mget(SOCKET &connect_SOCKET, char* host, char *_cmd, command* cmdstruct){
+
 }
