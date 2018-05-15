@@ -7,9 +7,7 @@
 #include "client.h"
 
 
-//Global arguments for passive mode
-SOCKET DataSocket=INVALID_SOCKET;
-int ip1, ip2, ip3, ip4, p1, p2;
+
 
 
 int main(int argc, char *argv[])
@@ -81,8 +79,10 @@ int main(int argc, char *argv[])
 	TYPE_I(connect_SOCKET, "TYPE I\r\n");
 
 	command *cmdstruct=new command;
+	//test passive mode
+	cmdstruct->pasv_mode = true;
 	char *whole_cmd=new char[BUFLEN];
-	
+	memset(whole_cmd, '\0', BUFLEN);
 
 	while (1){
 		if (read_ftpclien_cmd(whole_cmd, cmdstruct) == -1){
@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
 		else
 		{
 			if ((strcmp(cmdstruct->_cmd, "NLST") == 0) || (strcmp(cmdstruct->_cmd, "LIST") == 0)){
-				ls(connect_SOCKET, host,whole_cmd);
+				ls(connect_SOCKET, host,whole_cmd,cmdstruct);
 				continue;
 			}
 			else if (strcmp(cmdstruct->_cmd, "STOR") == 0){
@@ -104,8 +104,36 @@ int main(int argc, char *argv[])
 				get(connect_SOCKET,host, whole_cmd, cmdstruct);
 				continue;
 			}
+			else if (strcmp(cmdstruct->_cmd,"MRETR")==0)
+			{
+				mget(connect_SOCKET, host, whole_cmd, cmdstruct);
+				continue;
+			}
+			else if (strcmp(cmdstruct->_cmd, "MSTOR") == 0)
+			{
+				mput(connect_SOCKET, host, whole_cmd, cmdstruct);
+				continue;
+			}
+			else if (strcmp(cmdstruct->_cmd, "QUIT") == 0){
+				handle_ftp_exit(connect_SOCKET, whole_cmd);
+				break;
+			}
+			else if (strcmp(cmdstruct->_cmd, "PASV") == 0)
+			{
+				cmdstruct->pasv_mode = true;
+				continue;
+			}
+			else if (strcmp(cmdstruct->_cmd, "ACTV") == 0){
+				//cmdstruct->pasv_mode = false;
+				continue;
+			}
+			else{
+				break;
+			}
 		}
 	}
+	delete cmdstruct;
+	delete[]whole_cmd;
 	// Cleanup
 	closesocket(connect_SOCKET);
 	WSACleanup();
@@ -376,8 +404,17 @@ int read_ftpclien_cmd(char* buff,command *cmdstruct){
 	else if (strcmp(buff, "passive")==0){
 		strcpy_s(cmdstruct->_cmd, "PASV");
 	}
+	else if (strcmp(buff, "active") == 0){
+		strcpy_s(cmdstruct->_cmd, "ACTV");
+	}
 	else if (strcmp(buff, "quit")==0 || strcmp(buff, "exit")==0){
 		strcpy_s(cmdstruct->_cmd, "QUIT");
+	}
+	else if (strcmp(buff, "mget") == 0){
+		strcpy_s(cmdstruct->_cmd, "MRETR");
+	}
+	else if (strcmp(buff, "mput") == 0){
+		strcpy_s(cmdstruct->_cmd, "MSTOR");
 	}
 	else
 	{
@@ -407,12 +444,14 @@ int feedback(SOCKET &connect_SOCKET,char* feedback,int size){
 	return 0;
 }
 
-SOCKET pasv(SOCKET &connect_SOCKET, char* host){
+SOCKET pasv(SOCKET &connect_SOCKET, SOCKET &DataSocket, char* host){
+	int ip1, ip2, ip3, ip4, p1, p2;
+
 	char pasv[BUFLEN];
 	memset(pasv, '\0', BUFLEN);
 	sprintf_s(pasv, "PASV\r\n");
 
-	int status = send(connect_SOCKET, pasv, sizeof(pasv), 0);
+	int status = send(connect_SOCKET, pasv, strlen(pasv), 0);
 	if ( status==SOCKET_ERROR){
 		printf("send() error %d\n", WSAGetLastError());
 		return -1;
@@ -462,13 +501,15 @@ SOCKET pasv(SOCKET &connect_SOCKET, char* host){
 	return DataSocket;
 }
 
-int ls(SOCKET &connect_SOCKET,char* host,char *_cmd){
-	if (pasv(connect_SOCKET, host) != -1){
-		char retrive[BUFLEN * 2];
+int ls(SOCKET &connect_SOCKET, char* host, char *_cmd, command* cmdstruct){
+	SOCKET DataSocket;
+	
+	if (cmdstruct->pasv_mode && pasv(connect_SOCKET,DataSocket, host) != -1){
+		char retrive[BUFLEN];
 		char f_ls_list[BUFLEN * 5];
 
 		//send NLST
-		int status = send(connect_SOCKET, _cmd, BUFLEN, 0);
+		int status = send(connect_SOCKET, _cmd, strlen(_cmd), 0);
 
 		if (status < 0){
 			printf("send() error %d\n", WSAGetLastError());
@@ -486,11 +527,11 @@ int ls(SOCKET &connect_SOCKET,char* host,char *_cmd){
 
 		//get list
 		memset(retrive, '\0', BUFLEN);
-		memset(f_ls_list, '\0', sizeof(f_ls_list));
-		status = recv(DataSocket, retrive, sizeof(retrive), 0);
+		memset(f_ls_list, '\0', BUFLEN);
+		status = recv(DataSocket, retrive, BUFLEN, 0);
 		while (status > 0){
 			strcat(f_ls_list, retrive);
-			status = recv(DataSocket, retrive, sizeof(retrive), 0);
+			status = recv(DataSocket, retrive, BUFLEN, 0);
 		}
 		get226_Successfully_transferred(connect_SOCKET, feedb);
 		fputs(f_ls_list, stdout);
@@ -543,7 +584,8 @@ void TYPE_I(SOCKET &connect_SOCKET, char *typei){
 }
 
 int put(SOCKET &connect_SOCKET, char* host,char *_cmd,command* cmdstruct){
-	if (pasv(connect_SOCKET, host) != -1){
+	SOCKET DataSocket;
+	if (cmdstruct->pasv_mode && pasv(connect_SOCKET, DataSocket, host) != -1){
 		//Check whether file is valid?
 
 		FILE* file_out = fopen(cmdstruct->_args, "r");
@@ -552,7 +594,7 @@ int put(SOCKET &connect_SOCKET, char* host,char *_cmd,command* cmdstruct){
 			return -1;
 		}
 		//send STOR command
-		int status = send(connect_SOCKET, _cmd, BUFLEN, 0);
+		int status = send(connect_SOCKET, _cmd, strlen(_cmd), 0);
 
 		if (status < 0){
 			printf("send() error %d\n", WSAGetLastError());
@@ -579,17 +621,21 @@ int put(SOCKET &connect_SOCKET, char* host,char *_cmd,command* cmdstruct){
 				return -1;
 			}
 		}
-		fclose(file_out);
 		
+		fclose(file_out);
 		closesocket(DataSocket);
+
+		get226_Successfully_transferred(connect_SOCKET, feedb);
 		return 0;
 	}
+	return -1;
 }
 
 int get(SOCKET &connect_SOCKET, char* host,char *_cmd, command* cmdstruct){
-	if (pasv(connect_SOCKET, host) != -1){
+	SOCKET DataSocket;
+	if (cmdstruct->pasv_mode && pasv(connect_SOCKET, DataSocket, host) != -1){
 		//send RETR command
-		int status = send(connect_SOCKET, _cmd, BUFLEN, 0);
+		int status = send(connect_SOCKET, _cmd, strlen(_cmd), 0);
 
 		if (status < 0){
 			printf("send() error %d\n", WSAGetLastError());
@@ -626,7 +672,6 @@ int get(SOCKET &connect_SOCKET, char* host,char *_cmd, command* cmdstruct){
 		while (len = recv(DataSocket, buf, BUFLEN, 0) > 0){
 			fwrite(buf, 1, BUFLEN, file_in);
 		}
-
 		get226_Successfully_transferred(connect_SOCKET, feedb);
 		fclose(file_in);
 
@@ -634,6 +679,7 @@ int get(SOCKET &connect_SOCKET, char* host,char *_cmd, command* cmdstruct){
 
 		return 0;
 	}
+	return -1;
 }
 
 int get226_Successfully_transferred(SOCKET &connect_SOCKET, char* pre_feedback){
@@ -665,5 +711,138 @@ int get226_Successfully_transferred(SOCKET &connect_SOCKET, char* pre_feedback){
 }
 
 int mget(SOCKET &connect_SOCKET, char* host, char *_cmd, command* cmdstruct){
+	strcpy_s(cmdstruct->_cmd, "RETR");
+	
+	int count = 0;
 
+	char _cmd1[BUFLEN];
+	char *arg1 = NULL;
+	command *cmdstruct1=new command;
+	cmdstruct1->pasv_mode = cmdstruct->pasv_mode;
+	strcpy(cmdstruct1->_cmd, cmdstruct->_cmd);
+
+	char *next_token;
+	//get argument 1
+	arg1 = strtok_s(cmdstruct->_args, " ", &next_token);
+	++count;
+	strcpy(cmdstruct1->_args, arg1);
+
+	if (next_token == NULL){
+		*cmdstruct->_args = *arg1;
+		return get(connect_SOCKET, host, _cmd, cmdstruct);
+	}
+
+	memset(_cmd1, '\0', BUFLEN);
+
+	strcat(_cmd1, cmdstruct1->_cmd);
+	strcat(_cmd1, " ");
+	strcat(_cmd1, arg1);
+	strcat(_cmd1, "\r\n\0");
+
+	while (count > 0){
+		if (get(connect_SOCKET, host, _cmd1, cmdstruct1) == -1){
+			return -1;
+		}
+		--count;
+		//If still have files need to be downloaded
+		if (*next_token !='\0'){
+			arg1 = strtok_s(NULL, " ", &next_token);
+			++count;
+			memset(cmdstruct1->_args, '\0', sizeof(cmdstruct1->_args));
+			strcpy(cmdstruct1->_args, arg1);
+			memset(_cmd1, '\0', BUFLEN);
+			strcat(_cmd1, cmdstruct1->_cmd);
+			strcat(_cmd1, " ");
+			strcat(_cmd1, arg1);
+			strcat(_cmd1, "\r\n\0");
+		}
+	}
+
+	delete cmdstruct1;
+	return 0;
+}
+
+int mput(SOCKET &connect_SOCKET, char* host, char *_cmd, command* cmdstruct){
+	strcpy_s(cmdstruct->_cmd, "STOR");
+
+	int count = 0;
+
+	char _cmd1[BUFLEN];
+	char *arg1 = NULL;
+	command *cmdstruct1 = new command;
+	cmdstruct1->pasv_mode = cmdstruct->pasv_mode;
+	strcpy(cmdstruct1->_cmd, cmdstruct->_cmd);
+
+	char *next_token;
+	//get argument 1
+	arg1 = strtok_s(cmdstruct->_args, " ", &next_token);
+	++count;
+	strcpy(cmdstruct1->_args, arg1);
+
+	if (next_token == NULL){
+		*cmdstruct->_args = *arg1;
+		return get(connect_SOCKET, host, _cmd, cmdstruct);
+	}
+
+	memset(_cmd1, '\0', BUFLEN);
+
+	strcat(_cmd1, cmdstruct1->_cmd);
+	strcat(_cmd1, " ");
+	strcat(_cmd1, arg1);
+	strcat(_cmd1, "\r\n\0");
+
+	while (count > 0){
+		if (put(connect_SOCKET, host, _cmd1, cmdstruct1) == -1){
+			return -1;
+		}
+		--count;
+		//If still have files need to be downloaded
+		if (*next_token != '\0'){
+			arg1 = strtok_s(NULL, " ", &next_token);
+			++count;
+			memset(cmdstruct1->_args, '\0', sizeof(cmdstruct1->_args));
+			strcpy(cmdstruct1->_args, arg1);
+			memset(_cmd1, '\0', BUFLEN);
+			strcat(_cmd1, cmdstruct1->_cmd);
+			strcat(_cmd1, " ");
+			strcat(_cmd1, arg1);
+			strcat(_cmd1, "\r\n\0");
+		}
+	}
+
+	delete cmdstruct1;
+	return 0;
+}
+
+int handle_ftp_exit(SOCKET connect_SOCKET, char * quit_cmd)
+{
+	char buf[BUFLEN];
+	int len_temp;
+	int reply_code;
+	int status;
+
+	// QUIT <CRLF>
+	status = send(connect_SOCKET, quit_cmd, strlen(quit_cmd), 0);
+
+	if (status == SOCKET_ERROR) {
+		printf("send() error %d\n", WSAGetLastError());
+	}
+
+	memset(buf, '\0', BUFLEN);
+	// Check server recieving quit msg
+	while (len_temp = recv(connect_SOCKET, buf, BUFLEN, 0) > 0) {
+		char *p_end = NULL;
+		reply_code = strtol(buf, &p_end, 10);
+		print_reply_code(reply_code);
+
+		// 221 Service closing control connection.
+		//     Logged out if appropriate.
+		if (reply_code == 221) {
+			break;
+		}
+		// error happen
+		return -1;
+	}
+
+	return 0;
 }

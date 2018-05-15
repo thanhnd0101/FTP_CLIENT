@@ -7,7 +7,8 @@
 #include <ws2tcpip.h>
 #include <string.h>
 #include <iostream>
-#include <string>
+
+
 
 #pragma comment(lib, "Ws2_32.lib")
 
@@ -40,9 +41,9 @@ void print_reply_code(int reply_code);
 */
 int read_ftpclien_cmd(char* buff, command *cmdstruct);
 
-SOCKET pasv(SOCKET &connect_SOCKET, char* host);
+SOCKET pasv(SOCKET &connect_SOCKET, SOCKET &DataSocket, char* host);
 
-int ls(SOCKET &connect_SOCKET, char* host, char *_cmd);
+int ls(SOCKET &connect_SOCKET, char* host, char *_cmd, command* cmdstruct);
 
 void pwd(SOCKET &connect_SOCKET, char *pwd);
 
@@ -55,5 +56,11 @@ int get(SOCKET &connect_SOCKET, char* host, char *_cmd, command* cmdstruct);
 int feedback(SOCKET &connect_SOCKET, char* feedback, int size);
 
 int get226_Successfully_transferred(SOCKET &connect_SOCKET, char* pre_feedback);
+
+int mget(SOCKET &connect_SOCKET, char* host, char *_cmd, command* cmdstruct);
+
+int mput(SOCKET &connect_SOCKET, char* host, char *_cmd, command* cmdstruct);
+
+int handle_ftp_exit(SOCKET connect_SOCKET, char * quit_cmd);
 
 #endif
