@@ -644,7 +644,7 @@ int get(SOCKET &connect_SOCKET, char *host, char *_cmd, command *cmdstruct,
 	memset(buf, '\0', BUFLEN);
 
 	while (len = recv(DataSocket, buf, BUFLEN, 0) > 0) {
-		fwrite(buf, sizeof(char), sizeof(buf), file_in);
+		fwrite(buf, sizeof(char), len, file_in);
 	}
 
 	// get226_Successfully_transferred
