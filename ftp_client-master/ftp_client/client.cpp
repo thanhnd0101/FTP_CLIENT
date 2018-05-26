@@ -10,6 +10,7 @@ int main(int argc, char *argv[])
 	// Kiem tra cu phap
 	if (argc != 2) {
 		printf("Using: ftp_client ftp.example.com\n");
+		_getch();
 		exit(1);
 	}
 	int status;
@@ -102,6 +103,7 @@ int main(int argc, char *argv[])
 	while (1) {
 		if (read_ftpclien_cmd(whole_cmd, cmdstruct) == FTP_FAIL) {
 			printf("Invalid Commmand\n");
+			print_help();
 			continue;
 		}
 		else {
@@ -171,6 +173,10 @@ int main(int argc, char *argv[])
 			}
 			else if (strcmp(cmdstruct->_cmd, "CWD") == 0) {
 				cd(connect_SOCKET, whole_cmd);
+				continue;
+			}
+			else if (strcmp(cmdstruct->_cmd, "HELP") == 0){
+				print_help();
 				continue;
 			}
 			else {
@@ -339,6 +345,9 @@ int read_ftpclien_cmd(char *buff, command *cmdstruct)
 	}
 	else if (strcmp(buff, "lcd") == 0) {
 		strcpy_s(cmdstruct->_cmd, "CHDIR");
+	}
+	else if (strcmp(buff, "help") == 0 || strcmp(buff, "?") == 0){
+		strcpy_s(cmdstruct->_cmd, "HELP");
 	}
 	else {
 		return FTP_FAIL;
@@ -1039,4 +1048,23 @@ SOCKET mode_active(SOCKET connect_SOCKET, char *ip_client_str)
 		return INVALID_SOCKET;
 
 	return listen_SOCKET;
+}
+void print_help()
+{
+	printf("- help/? :                           Hien thi tat ca cau lenh tren FTP_CLIENt\n");
+	printf("- ls [path]:                         Liet ke thu muc tren Server\n");
+	printf("- put [PathFile]:                    Upload file den Server\n");
+	printf("- get [PathFile]:                    Dowload file tu Server\n");
+	printf("- mput [PathFile] [PathFile] ...:    Upload nhieu file den Server\n");
+	printf("- mget [PathFile] [PathFile] ...:    Dowload nhieu file tu Server\n");
+	printf("- cd [PathFile]:                     Thay doi duong dan tren Server\n");
+	printf("- lcd [PathFile]:                    Thay doi duong dan duoi Client\n");
+	printf("- delete [PathFile]:                 Xoa mot file tren Server\n");
+	printf("- mdelete [PathFile] [PathFile] ...: Xoa nhieu file tren Server\n");
+	printf("- mkdir [PathFile]:                  Tao thu muc tren Server\n");
+	printf("- rmdir [PathFile]:                  Xoa thu muc rong tren Server\n");
+	printf("- pwd:                               Hien thi duong dan hien tai tren Server\n");
+	printf("- passive:                           Chuyen qua trang thai passive\n");
+	printf("- active:                            Chuyen qua trang thai active\n");
+	printf("- exist/quit:                        Thoat khoi Server\n");
 }
